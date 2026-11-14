@@ -9,9 +9,15 @@ import crypto from 'node:crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const HOST = '127.0.0.1';
-const DATA_DIR = path.join(__dirname, 'data');
+const HOST = process.env.HOST || '0.0.0.0';
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const AUTH_DIR = process.env.WWEBJS_AUTH_DIR || path.join(__dirname, '.wwebjs_auth');
 const DATA_FILE = path.join(DATA_DIR, 'store.json');
+const ADMIN_USER = process.env.ADMIN_USER || '';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+if (process.env.NODE_ENV === 'production' && (!ADMIN_USER || !ADMIN_PASSWORD)) {
+  throw new Error('Set ADMIN_USER and ADMIN_PASSWORD before running in production.');
+}
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const emptyStore = { contacts: [], campaigns: [], messages: [] };
 function loadStore() {
@@ -26,8 +32,12 @@ function saveStore() {
 }
 const id = () => crypto.randomUUID();
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: 'e-postman', dataPath: path.join(__dirname, '.wwebjs_auth') }),
-  puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+  authStrategy: new LocalAuth({ clientId: 'e-postman', dataPath: AUTH_DIR }),
+  puppeteer: {
+    headless: true,
+    ...(process.env.PUPPETEER_EXECUTABLE_PATH ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH } : {}),
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  }
 });
 let waState = 'initializing', qrDataUrl = null, waError = null;
 let activeCampaign = null, pauseRequested = false, stopRequested = false;
@@ -41,6 +51,35 @@ client.on('message_ack', (msg, ack) => {
   if (record) { record.ack = ack; saveStore(); }
 });
 client.initialize().catch(err => { waState = 'error'; waError = err.message; });
+// Public health check for the hosting platform.
+app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// Protect the dashboard and every API route with HTTP Basic Auth in production.
+if (ADMIN_USER && ADMIN_PASSWORD) {
+  const safeEqual = (a, b) => {
+    const left = Buffer.from(a);
+    const right = Buffer.from(b);
+    return left.length === right.length && crypto.timingSafeEqual(left, right);
+  };
+  app.use((req, res, next) => {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Basic ')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="E-postman"');
+      return res.status(401).send('Authentication required');
+    }
+    let decoded = '';
+    try { decoded = Buffer.from(header.slice(6), 'base64').toString('utf8'); } catch {}
+    const separator = decoded.indexOf(':');
+    const username = separator >= 0 ? decoded.slice(0, separator) : '';
+    const password = separator >= 0 ? decoded.slice(separator + 1) : '';
+    if (!safeEqual(username, ADMIN_USER) || !safeEqual(password, ADMIN_PASSWORD)) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="E-postman"');
+      return res.status(401).send('Invalid credentials');
+    }
+    next();
+  });
+}
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/status', (_req, res) => res.json({ state: waState, qr: qrDataUrl, error: waError, campaignRunning: Boolean(activeCampaign), activeCampaignId: activeCampaign }));
@@ -113,5 +152,5 @@ app.post('/api/campaigns/resume', (_req, res) => { if (!activeCampaign) return r
 app.post('/api/campaigns/stop', (_req, res) => { if (!activeCampaign) return res.status(409).json({ error: 'No campaign is running.' }); stopRequested = true; pauseRequested = false; res.json({ ok: true }); });
 app.get('/api/export', (_req, res) => { res.setHeader('Content-Disposition', 'attachment; filename="e-postman-backup.json"'); res.json(store); });
 app.use((_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, HOST, () => console.log(`E-postman running at http://${HOST}:${PORT}`));
+app.listen(PORT, HOST, () => console.log(`E-postman running on ${HOST}:${PORT}`));
 process.on('SIGINT', async () => { try { await client.destroy(); } finally { process.exit(0); } });
