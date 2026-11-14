@@ -122,7 +122,7 @@ async function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms))
 async function runCampaign(campaign) {
   activeCampaign = campaign.id; pauseRequested = false; stopRequested = false;
   campaign.status = 'running'; campaign.startedAt = new Date().toISOString(); saveStore();
-  const recipients = store.contacts.filter(c => campaign.contactIds.includes(c.id) && c.optedIn);
+  const recipients = store.contacts.filter(c => campaign.contactIds.includes(c.id));
   campaign.total = recipients.length; campaign.sent = 0; campaign.failed = 0; saveStore();
   for (const contact of recipients) {
     while (pauseRequested && !stopRequested) { campaign.status = 'paused'; saveStore(); await wait(500); }
@@ -143,13 +143,14 @@ async function runCampaign(campaign) {
   activeCampaign = null; pauseRequested = false; stopRequested = false;
 }
 app.post('/api/campaigns', (req, res) => {
-  const { name, text, contactIds, delaySeconds } = req.body || {};
+  const { name, text, contactIds, delaySeconds, consentConfirmed } = req.body || {};
   if (waState !== 'ready') return res.status(409).json({ error: 'Connect WhatsApp before starting a campaign.' });
   if (activeCampaign) return res.status(409).json({ error: 'Another campaign is already running.' });
   if (!String(text || '').trim()) return res.status(400).json({ error: 'Message text is required.' });
   if (!Array.isArray(contactIds) || contactIds.length === 0) return res.status(400).json({ error: 'Select at least one contact.' });
-  const chosen = store.contacts.filter(c => contactIds.includes(c.id) && c.optedIn);
-  if (!chosen.length) return res.status(400).json({ error: 'No selected contacts have recorded opt-in consent.' });
+  if (consentConfirmed !== true) return res.status(400).json({ error: 'Confirm that all selected recipients have agreed to receive these messages.' });
+  const chosen = store.contacts.filter(c => contactIds.includes(c.id));
+  if (!chosen.length) return res.status(400).json({ error: 'No valid selected contacts were found.' });
   const campaign = { id: id(), name: String(name || 'Untitled campaign').trim().slice(0, 100), text: String(text).slice(0, 4000), contactIds: chosen.map(c => c.id), delayMs: Math.max(5000, Math.min(60000, Number(delaySeconds || 15) * 1000)), status: 'queued', total: chosen.length, sent: 0, failed: 0, createdAt: new Date().toISOString() };
   store.campaigns.push(campaign); saveStore();
   runCampaign(campaign).catch(err => { campaign.status = 'error'; campaign.error = err.message; saveStore(); activeCampaign = null; });
