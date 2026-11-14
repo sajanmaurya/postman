@@ -32,26 +32,32 @@ function saveStore() {
   fs.renameSync(tmp, DATA_FILE);
 }
 const id = () => crypto.randomUUID();
-const client = new Client({
-  authStrategy: new LocalAuth({ clientId: 'e-postman', dataPath: AUTH_DIR }),
-  puppeteer: {
-    headless: true,
-    ...(process.env.PUPPETEER_EXECUTABLE_PATH ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH } : {}),
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-  }
-});
+let client;
 let waState = 'initializing', qrDataUrl = null, waError = null;
 let activeCampaign = null, pauseRequested = false, stopRequested = false;
-client.on('qr', async qr => { qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 2 }); waState = 'qr'; });
-client.on('authenticated', () => { waState = 'authenticated'; qrDataUrl = null; waError = null; });
-client.on('ready', () => { waState = 'ready'; qrDataUrl = null; waError = null; });
-client.on('auth_failure', msg => { waState = 'auth_failure'; waError = String(msg); });
-client.on('disconnected', reason => { waState = 'disconnected'; waError = String(reason); });
-client.on('message_ack', (msg, ack) => {
-  const record = store.messages.find(m => m.waMessageId === msg.id?._serialized);
-  if (record) { record.ack = ack; saveStore(); }
-});
-client.initialize().catch(err => { waState = 'error'; waError = err.message; });
+function createWhatsAppClient() {
+  const instance = new Client({
+    authStrategy: new LocalAuth({ clientId: 'e-postman', dataPath: AUTH_DIR }),
+    puppeteer: {
+      headless: true,
+      ...(process.env.PUPPETEER_EXECUTABLE_PATH ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH } : {}),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    }
+  });
+  instance.on('qr', async qr => { qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 2 }); waState = 'qr'; waError = null; });
+  instance.on('authenticated', () => { waState = 'authenticated'; qrDataUrl = null; waError = null; });
+  instance.on('ready', () => { waState = 'ready'; qrDataUrl = null; waError = null; });
+  instance.on('auth_failure', msg => { waState = 'auth_failure'; waError = String(msg); });
+  instance.on('disconnected', reason => { waState = 'disconnected'; qrDataUrl = null; waError = String(reason); });
+  instance.on('message_ack', (msg, ack) => {
+    const record = store.messages.find(m => m.waMessageId === msg.id?._serialized);
+    if (record) { record.ack = ack; saveStore(); }
+  });
+  client = instance;
+  instance.initialize().catch(err => { waState = 'error'; waError = err.message; });
+  return instance;
+}
+createWhatsAppClient();
 // Public health check for the hosting platform.
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -85,8 +91,17 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/status', (_req, res) => res.json({ state: waState, qr: qrDataUrl, error: waError, campaignRunning: Boolean(activeCampaign), activeCampaignId: activeCampaign }));
 app.post('/api/logout', async (_req, res) => {
-  try { await client.logout(); waState = 'disconnected'; qrDataUrl = null; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  if (activeCampaign) return res.status(409).json({ error: 'Stop the active campaign before switching WhatsApp accounts.' });
+  try {
+    waState = 'logging_out'; qrDataUrl = null; waError = null;
+    await client.logout();
+    waState = 'initializing';
+    createWhatsAppClient();
+    res.json({ ok: true, message: 'WhatsApp logged out. Scan the new QR code to connect another number.' });
+  } catch (e) {
+    waState = 'error'; waError = e.message;
+    res.status(500).json({ error: e.message });
+  }
 });
 app.get('/api/contacts', (_req, res) => res.json(store.contacts));
 app.post('/api/contacts', (req, res) => {
