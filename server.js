@@ -1,5 +1,6 @@
 import express from 'express';
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import whatsapp from 'whatsapp-web.js';
+const { Client, LocalAuth } = whatsapp;
 import QRCode from 'qrcode';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -106,6 +107,16 @@ app.post('/api/contacts/import', (req, res) => {
     store.contacts.push({ id: id(), name, phone, optedIn: row.optedIn === true, createdAt: new Date().toISOString() }); added++;
   }
   saveStore(); res.json({ added, skipped });
+});
+app.patch('/api/contacts/:id/consent', (req, res) => {
+  const contact = store.contacts.find(c => c.id === req.params.id);
+  if (!contact) return res.status(404).json({ error: 'Contact not found.' });
+  if (typeof req.body?.optedIn !== 'boolean') return res.status(400).json({ error: 'optedIn must be true or false.' });
+  contact.optedIn = req.body.optedIn;
+  if (!contact.optedIn) {
+    // Immediately remove withdrawn contacts from the current UI selection is handled client-side.
+  }
+  saveStore(); res.json(contact);
 });
 app.delete('/api/contacts/:id', (req, res) => { store.contacts = store.contacts.filter(c => c.id !== req.params.id); saveStore(); res.json({ ok: true }); });
 app.get('/api/campaigns', (_req, res) => res.json(store.campaigns.slice().reverse()));
