@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-postman</title><link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="#"><span class="mark">e.</span><span>E-postman <small>CAMPAIGN STUDIO</small></span></a><span class="tag">BETA</span></header>
+<section class="intro"><p class="eyebrow">A LITTLE MORE HUMAN</p><h1>Your messages,<br><em>thoughtfully sent.</em></h1><p>Prepare a campaign, personalize each message, then review and send it in WhatsApp Web.</p><button id="openWhatsApp" class="dark-btn">Open WhatsApp Web ↗</button></section>
+<section class="section">
+<div class="section-head"><div><p class="eyebrow">YOUR AUDIENCE</p><h2>Contacts <span id="contactCount">0</span></h2></div><button id="selectAll" class="quiet">Select all</button></div>
+<form id="contactForm" class="add-form"><input id="contactName" placeholder="Name" required><input id="contactPhone" placeholder="Phone with country code" inputmode="tel" required><button class="add-btn" aria-label="Add contact">+</button></form>
+<div class="tools"><label class="upload">Import CSV<input type="file" id="csv" accept=".csv"></label><button id="clearSelection" class="quiet">Clear selection</button></div>
+<div id="contacts" class="contacts"><p class="empty">Add contacts or import a CSV to begin.</p></div>
+</section>
+<section class="section compose">
+<p class="eyebrow">THE NOTE</p><h2>Compose campaign</h2>
+<label class="field-label" for="campaignName">Campaign name</label><input id="campaignName" placeholder="November update">
+<label class="field-label" for="message">Message</label><textarea id="message" rows="6" placeholder="Hi {name}, just wanted to share..."></textarea>
+<p class="hint">Use <code>{name}</code> and <code>{phone}</code> to personalize each message.</p>
+<div class="preview"><div class="preview-top"><strong>MESSAGE PREVIEW</strong><span id="previewRecipient">Select a contact</span></div><p id="previewText">Your personalized message will appear here.</p></div>
+<div class="campaign-actions"><button id="startCampaign" class="send-btn">Open next WhatsApp chat <span>→</span></button><button id="next" class="next-btn">Next recipient</button></div>
+<p id="progress" class="progress" aria-live="polite">Select contacts to prepare your campaign.</p>
+<p class="notice">E-postman prepares each chat with a personalized message. You must review and press Send in WhatsApp Web yourself. This extension does not send messages automatically.</p>
+</section>
+<footer>Contacts are stored locally in this browser. Only message people who have agreed to hear from you.</footer>
+<script src="sidepanel.js"></script>
+</body></html>
