@@ -1,12 +1,12 @@
 import express from 'express';
 import whatsapp from 'whatsapp-web.js';
-const { Client, LocalAuth } = whatsapp;
 import QRCode from 'qrcode';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
+const { Client, LocalAuth } = whatsapp;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -113,9 +113,6 @@ app.patch('/api/contacts/:id/consent', (req, res) => {
   if (!contact) return res.status(404).json({ error: 'Contact not found.' });
   if (typeof req.body?.optedIn !== 'boolean') return res.status(400).json({ error: 'optedIn must be true or false.' });
   contact.optedIn = req.body.optedIn;
-  if (!contact.optedIn) {
-    // Immediately remove withdrawn contacts from the current UI selection is handled client-side.
-  }
   saveStore(); res.json(contact);
 });
 app.delete('/api/contacts/:id', (req, res) => { store.contacts = store.contacts.filter(c => c.id !== req.params.id); saveStore(); res.json({ ok: true }); });
