@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "E-postman — WhatsApp Campaign Companion",
+  "version": "1.0.0",
+  "description": "Prepare personalized WhatsApp messages and work through your opted-in contact list from a Chrome side panel.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "sidePanel", "tabs"],
+  "host_permissions": ["https://web.whatsapp.com/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Open E-postman" },
+  "side_panel": { "default_path": "sidepanel.html" }
+}
